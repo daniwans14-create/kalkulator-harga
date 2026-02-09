@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalkulator Harga Produk</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+<style>
+/* ===== MOBILE FIRST ===== */
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    padding: 12px;
+}
+
+.container {
+    max-width: 1100px;
+    margin: auto;
+    background: #fff;
+    padding: 16px;
+    border-radius: 10px;
+}
+
+h1 {
+    text-align: center;
+    font-size: 20px;
+    margin-bottom: 12px;
+}
+
+.controls {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+input, select, button {
+    padding: 10px;
+    font-size: 15px;
+}
+
+button {
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+th, td {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+    text-align: right;
+}
+
+th:first-child, td:first-child,
+th:nth-child(2), td:nth-child(2),
+th:nth-child(3), td:nth-child(3) {
+    text-align: left;
+}
+
+th {
+    background: #f0f0f0;
+    position: sticky;
+    top: 0;
+}
+
+/* ===== DESKTOP ===== */
+@media (min-width: 768px) {
+    .controls {
+        grid-template-columns: repeat(4, 1fr);
+        align-items: end;
+    }
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h1>Kalkulator Harga Produk</h1>
+
+<div class="controls">
+    <input type="number" id="margin" value="20" placeholder="Margin (%)" oninput="hitungHarga()">
+
+    <input type="text" id="search" placeholder="Cari produk..." oninput="hitungHarga()">
+
+    <select id="kategoriFilter" onchange="hitungHarga()">
+        <option value="all">Semua Kategori</option>
+    </select>
+
+    <button onclick="exportExcel()">Export Excel</button>
+</div>
+
+<table>
+<thead>
+<tr>
+    <th>Brand</th>
+    <th>Kategori</th>
+    <th>Produk</th>
+    <th>Harga</th>
+    <th>Diskon</th>
+    <th>Final</th>
+</tr>
+</thead>
+<tbody id="produkTable"></tbody>
+</table>
+</div>
+
+<script>
+/* ===========================
+   🔴 GANTI LINK DI SINI SAJA
+   =========================== */
+const SHEET_URL =
+"https://api.allorigins.win/raw?url=https://docs.google.com/spreadsheets/d/e/2PACX-1vS-PJduZQEovbJzaIG3JcV5fytFx-oDaNX4FHe36oC2BVSq1CpTrrZsxXSAzk6L5EuvHoCavrT99Dhc/pubhtml?gid=0&single=true";
+/* =========================== */
+
+let produk = [];
+
+/* FORMAT */
+function rupiah(x) {
+    return "Rp " + Math.round(x).toLocaleString("id-ID");
+}
+
+/* LOAD DATA */
+function loadData() {
+    Papa.parse(SHEET_URL, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: res => {
+            produk = res.data;
+            isiKategori();
+            hitungHarga();
+        }
+    });
+}
+
+/* AUTO REFRESH (5 MENIT) */
+setInterval(loadData, 300000);
+
+/* KATEGORI */
+function isiKategori() {
+    const select = document.getElementById("kategoriFilter");
+    const kategori = [...new Set(produk.map(p => p.kategori))].filter(Boolean);
+
+    select.innerHTML = `<option value="all">Semua Kategori</option>`;
+    kategori.forEach(k => {
+        select.innerHTML += `<option value="${k}">${k}</option>`;
+    });
+}
+
+/* HITUNG & RENDER */
+function hitungHarga() {
+    const margin = parseFloat(document.getElementById("margin").value) || 0;
+    const cari = document.getElementById("search").value.toLowerCase();
+    const kategori = document.getElementById("kategoriFilter").value;
+    const tbody = document.getElementById("produkTable");
+    tbody.innerHTML = "";
+
+    produk.forEach(p => {
+        if (kategori !== "all" && p.kategori !== kategori) return;
+        if (cari && !p.nama.toLowerCase().includes(cari)) return;
+
+        const harga = parseFloat(p.harga);
+        const diskon = parseFloat(p.diskon) || 0;
+        if (isNaN(harga)) return;
+
+        const jual = harga + (harga * margin / 100);
+        const final = jual - (jual * diskon / 100);
+
+        tbody.innerHTML += `
+        <tr>
+            <td>${p.brand}</td>
+            <td>${p.kategori}</td>
+            <td>${p.nama}</td>
+            <td>${rupiah(harga)}</td>
+            <td>${diskon}%</td>
+            <td>${rupiah(final)}</td>
+        </tr>`;
+    });
+}
+
+/* EXPORT */
+function exportExcel() {
+    const margin = parseFloat(document.getElementById("margin").value) || 0;
+    const data = [["Brand","Kategori","Produk","Harga","Diskon","Harga Final"]];
+
+    produk.forEach(p => {
+        const harga = parseFloat(p.harga);
+        const diskon = parseFloat(p.diskon) || 0;
+        if (isNaN(harga)) return;
+
+        const jual = harga + (harga * margin / 100);
+        const final = jual - (jual * diskon / 100);
+        data.push([p.brand, p.kategori, p.nama, harga, diskon, final]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Produk");
+    XLSX.writeFile(wb, "harga-produk.xlsx");
+}
+
+loadData();
+</script>
+</body>
+</html>
